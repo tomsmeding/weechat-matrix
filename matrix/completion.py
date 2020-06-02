@@ -16,6 +16,7 @@
 
 from __future__ import unicode_literals
 
+import re
 from typing import List, Optional
 from matrix.globals import SERVERS, W, SCRIPT_NAME
 from matrix.utf import utf8_decode
@@ -98,8 +99,11 @@ def matrix_debug_completion_cb(data, completion_item, buffer, completion):
 REDACTION_COMP_LEN = 50
 
 
+def matrix_emxc_completion_cb(data, completion_item, buffer, completion):
+    return matrix_message_completion_cb(data, completion_item, buffer, completion, only_emxc=True)
+
 @utf8_decode
-def matrix_message_completion_cb(data, completion_item, buffer, completion):
+def matrix_message_completion_cb(data, completion_item, buffer, completion, only_emxc=False):
     max_events = 500
 
     def redacted_or_not_message(tags):
@@ -128,6 +132,9 @@ def matrix_message_completion_cb(data, completion_item, buffer, completion):
             added = 0
 
             for line in lines:
+                if only_emxc and not re.fullmatch(r"<.*> \[emxc://.*\]", W.string_remove_color(line.message, "")):
+                    continue
+
                 tags = line.tags
                 if redacted_or_not_message(tags):
                     continue
@@ -323,6 +330,13 @@ def init_completion():
         "matrix_messages",
         "Matrix message completion",
         "matrix_message_completion_cb",
+        "",
+    )
+
+    W.hook_completion(
+        "matrix_emxc_messages",
+        "Matrix emxc:// message completion",
+        "matrix_emxc_completion_cb",
         "",
     )
 

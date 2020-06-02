@@ -19,6 +19,8 @@ from __future__ import unicode_literals
 import argparse
 import os
 import re
+import subprocess
+import shlex
 from builtins import str
 from future.moves.itertools import zip_longest
 from collections import defaultdict
@@ -303,6 +305,26 @@ def hook_commands():
         ("%(matrix_messages)"),
         # Function name
         "matrix_reply_command_cb",
+        "",
+    )
+
+    W.hook_command(
+        # Command name and short description
+        "decrypt-matrix",
+        "decrypt a matrix media message",
+        # Synopsis
+        ('<event-id>[:"<message-part>"]'),
+        # Description
+        (
+            "    event-id: event id of the message that will be replied to\n"
+            "message-part: an initial part of the message (ignored, only "
+            "used\n"
+            "              as visual feedback when using completion)\n"
+        ),
+        # Completions
+        ("%(matrix_emxc_messages)"),
+        # Function name
+        "matrix_decrypt_command_cb",
         "",
     )
 
@@ -1372,7 +1394,7 @@ def matrix_reply_command_cb(data, buffer, args):
             if not event_id or not reply:
                 message = (
                     "{prefix}matrix: Invalid command "
-                    "arguments (see /help reply)"
+                    "arguments (see /help reply-matrix)"
                 ).format(prefix=W.prefix("error"))
                 W.prnt("", message)
                 return W.WEECHAT_RC_ERROR
@@ -1400,7 +1422,63 @@ def matrix_reply_command_cb(data, buffer, args):
 
         if buffer == server.server_buffer:
             message = (
-                '{prefix}matrix: command "reply" must be '
+                '{prefix}matrix: command "reply-matrix" must be '
+                "executed on a Matrix channel buffer"
+            ).format(prefix=W.prefix("error"))
+            W.prnt("", message)
+            return W.WEECHAT_RC_OK
+
+    return W.WEECHAT_RC_OK
+
+
+@utf8_decode
+def matrix_decrypt_command_cb(data, buffer, args):
+    def predicate(event_id, line):
+        event_tag = SCRIPT_NAME + "_id_{}".format(event_id)
+        tags = line.tags
+
+        if event_tag in tags:
+            return True
+        return False
+
+    for server in SERVERS.values():
+        if buffer in server.buffers.values():
+            room_buffer = server.find_room_from_ptr(buffer)
+
+            # Intentional use of `parse_redact_args` which serves the
+            # necessary purpose
+            event_id, reason = parse_redact_args(args)
+
+            if not event_id or reason:  # no reason for /decrypt-matrix
+                message = (
+                    "{prefix}matrix: Invalid command "
+                    "arguments (see /help decrypt-matrix)"
+                ).format(prefix=W.prefix("error"))
+                W.prnt("", message)
+                return W.WEECHAT_RC_ERROR
+
+            lines = room_buffer.weechat_buffer.find_lines(
+                partial(predicate, event_id), max_lines=1
+            )
+
+            if not lines:
+                room_buffer.error(
+                    "No such message with event id "
+                    "{event_id} found.".format(event_id=event_id))
+                return W.WEECHAT_RC_OK
+
+            match = re.fullmatch(r"<.*> \[(emxc://.*)\]", W.string_remove_color(lines[0].message, ""))
+            if not match:
+                room_buffer.error("Selected message is not an emxc:// message.")
+                return W.WEECHAT_RC_OK
+
+            subprocess.run(["sh", "-c", shlex.join(["nohup", "matrix_decrypt", match[1]]) + " >/dev/null 2>&1 & disown"])
+
+            return W.WEECHAT_RC_OK
+
+        if buffer == server.server_buffer:
+            message = (
+                '{prefix}matrix: command "decrypt-matrix" must be '
                 "executed on a Matrix channel buffer"
             ).format(prefix=W.prefix("error"))
             W.prnt("", message)
