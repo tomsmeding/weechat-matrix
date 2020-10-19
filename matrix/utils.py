@@ -142,10 +142,10 @@ def text_block(text, margin=0):
     """
 
     # add vertical margin
-    vertical_margin = margin // 2
+    vertical_margin = max(1, margin // 2)
     text = "{}{}{}".format(
         "\n" * vertical_margin,
-        text,
+        text.strip("\n"),
         "\n" * vertical_margin
     )
 
@@ -154,10 +154,9 @@ def text_block(text, margin=0):
 
     # pad block and add horizontal margin
     text = "\n".join(
-        "{pre}{line}{post}".format(
+        "{pre}{line}".format(
             pre=" " * margin,
-            line=l,
-            post=" " * (longest_len - len(l)))
+            line=l)
         for l in lines)
 
     return text
